@@ -58,6 +58,7 @@ interface StatsBarProps {
   totalTransactions: number;
   todayTransactions: number;
   maliciousTransactions: number;
+  contractsAnalyzedToday: number;
   isLive: boolean;
   onToggleLive: () => void;
 }
@@ -65,12 +66,13 @@ interface StatsBarProps {
 export function StatsBar({ 
   totalTransactions, 
   todayTransactions, 
-  maliciousTransactions, 
+  maliciousTransactions,
+  contractsAnalyzedToday,
   isLive, 
   onToggleLive 
 }: StatsBarProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
       <StatsCard
         label="Total Tracked"
         value={totalTransactions}
@@ -85,11 +87,45 @@ export function StatsBar({
         trend={8}
         animated={isLive}
       />
+      <motion.div
+        className={`glass-card rounded-xl p-4 transition-smooth hover:scale-105 ${
+          maliciousTransactions > 0 ? 'animate-pulse' : ''
+        }`}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        whileHover={{ y: -2 }}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg glass-card">
+              <Shield className={`h-5 w-5 ${maliciousTransactions > 0 ? 'text-red-400' : 'text-green-400'}`} />
+            </div>
+            <div>
+              <p className="text-muted-foreground text-sm">Malicious Contracts</p>
+              <motion.p 
+                className={`text-2xl font-bold ${maliciousTransactions > 0 ? 'text-red-400' : 'text-green-400'}`}
+                animate={maliciousTransactions > 0 ? { scale: [1, 1.05, 1] } : {}}
+                transition={{ duration: 0.6, ease: "easeInOut", repeat: maliciousTransactions > 0 ? Infinity : 0, repeatDelay: 2 }}
+              >
+                {maliciousTransactions}
+              </motion.p>
+            </div>
+          </div>
+          <div className={`flex items-center gap-1 text-sm ${
+            maliciousTransactions > 0 ? 'text-red-400' : 'text-green-400'
+          }`}>
+            <TrendingUp className="h-4 w-4" />
+            <span>-5%</span>
+          </div>
+        </div>
+      </motion.div>
       <StatsCard
-        label="Malicious Detected"
-        value={maliciousTransactions}
-        icon={<Shield className="h-5 w-5 text-red-400" />}
-        trend={-5}
+        label="Contracts Analyzed Today"
+        value={contractsAnalyzedToday}
+        icon={<Shield className="h-5 w-5 text-blue-400" />}
+        trend={15}
+        animated={isLive}
       />
       <motion.div
         className="glass-card rounded-xl p-4 flex items-center justify-between"

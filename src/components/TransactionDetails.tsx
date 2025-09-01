@@ -1,50 +1,44 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ExternalLink, Shield, AlertTriangle, Clock, Loader2 } from "lucide-react";
+import { 
+  ExternalLink, 
+  Shield, 
+  AlertTriangle, 
+  Clock, 
+  Loader2, 
+  FileText, 
+  User,
+  Info
+} from "lucide-react";
 import { Transaction, TransactionAnalysis } from "@/types/transaction";
 import { AddressDisplay } from "./AddressDisplay";
 import { RiskBadge } from "./RiskBadge";
+import { ContractAnalysisResult } from "./ContractAnalysisResult";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDistanceToNow, format } from "date-fns";
+import { useContractAnalysis } from "@/hooks/useContractAnalysis";
+import { toast } from "react-hot-toast";
 
 interface TransactionDetailsProps {
   transaction: Transaction | null;
 }
 
 export function TransactionDetails({ transaction }: TransactionDetailsProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<TransactionAnalysis | null>(null);
+  const contractAnalysis = useContractAnalysis(transaction?.to || '');
 
-  const handleAnalyze = async () => {
-    if (!transaction) return;
+  const handleAnalyzeContract = async () => {
+    if (!transaction || !transaction.isToContract) return;
     
-    setIsAnalyzing(true);
-    
-    // Simulate analysis delay
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    // Mock analysis result
-    const mockAnalysis: TransactionAnalysis = {
-      riskScore: transaction.riskScore || Math.floor(Math.random() * 100),
-      confidence: transaction.confidence || Math.floor(Math.random() * 40) + 60,
-      riskFactors: transaction.riskFactors || [
-        "Normal transaction pattern",
-        "Verified addresses",
-        "Standard gas usage"
-      ],
-      recommendation: transaction.riskScore && transaction.riskScore > 70 
-        ? "High Risk - Further investigation recommended" 
-        : transaction.riskScore && transaction.riskScore > 40
-          ? "Medium Risk - Monitor closely"
-          : "Low Risk - Transaction appears normal",
-      riskLevel: transaction.riskLevel === 'not-analyzed' 
-        ? (Math.random() > 0.7 ? 'suspicious' : 'safe')
-        : transaction.riskLevel
-    };
-    
-    setAnalysis(mockAnalysis);
-    setIsAnalyzing(false);
+    try {
+      await contractAnalysis.analyze();
+      toast.success('Contract analysis completed!');
+    } catch (error) {
+      console.error('Contract analysis failed:', error);
+      toast.error('Contract analysis failed. Please try again.');
+    }
   };
 
   if (!transaction) {
@@ -63,6 +57,19 @@ export function TransactionDetails({ transaction }: TransactionDetailsProps) {
     );
   }
 
+  // Use existing analysis from transaction data if available
+  const displayAnalysis = analysis || (transaction.riskScore ? {
+    riskScore: transaction.riskScore,
+    confidence: transaction.confidence || 0,
+    riskFactors: transaction.riskFactors || [],
+    recommendation: transaction.riskScore > 70 
+      ? "High Risk - Further investigation recommended" 
+      : transaction.riskScore > 40
+        ? "Medium Risk - Monitor closely"
+        : "Low Risk - Transaction appears normal",
+    riskLevel: transaction.riskLevel
+  } as TransactionAnalysis : null);
+
   return (
     <motion.div
       className="glass-card rounded-xl p-6 space-y-6"
@@ -70,168 +77,215 @@ export function TransactionDetails({ transaction }: TransactionDetailsProps) {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.3 }}
     >
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Transaction Details</h3>
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Shield className="h-5 w-5 text-primary" />
+          Transaction Analysis
+        </h3>
         <RiskBadge riskLevel={transaction.riskLevel} />
       </div>
 
-      <div className="space-y-4">
-        {/* Transaction Hash */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-muted-foreground">Transaction Hash</label>
-          <AddressDisplay 
-            address={transaction.hash} 
-            truncate={false}
-            className="text-xs"
-          />
+      {/* Transaction Hash */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-muted-foreground">Transaction Hash</label>
+        <div className="flex items-center gap-2">
+          <code className="text-xs bg-muted p-2 rounded flex-1 font-mono">
+            {transaction.hash}
+          </code>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => window.open(`https://etherscan.io/tx/${transaction.hash}`, '_blank')}
+          >
+            <ExternalLink className="h-4 w-4" />
+          </Button>
         </div>
+      </div>
 
-        {/* Block Number */}
-        <div className="grid grid-cols-2 gap-4">
+      {/* Contract Security Status */}
+      <div className="space-y-3 border-t pt-4">
+        <h4 className="font-semibold flex items-center gap-2">
+          <FileText className="h-4 w-4" />
+          Contract Security Status
+        </h4>
+        
+        <div className="grid grid-cols-1 gap-4">
           <div>
-            <label className="text-sm font-medium text-muted-foreground">Block Number</label>
-            <p className="font-mono text-sm">{transaction.blockNumber.toLocaleString()}</p>
+            <label className="text-sm font-medium text-muted-foreground mb-2 block">From</label>
+            <div className="flex items-center gap-2">
+              <AddressDisplay 
+                address={transaction.from} 
+                label={transaction.fromLabel}
+              />
+              <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">
+                <User className="h-3 w-3" />
+                <span>👤 EOA</span>
+              </div>
+            </div>
           </div>
+          
           <div>
-            <label className="text-sm font-medium text-muted-foreground">Gas Fee</label>
-            <p className="font-mono text-sm">{transaction.gasFee} ETH</p>
-            <p className="text-xs text-muted-foreground">${transaction.gasFeeUsd}</p>
+            <label className="text-sm font-medium text-muted-foreground mb-2 block">To</label>
+            <div className="flex items-center gap-2">
+              <AddressDisplay 
+                address={transaction.to} 
+                label={transaction.toLabel || transaction.contractName || (transaction.isToContract ? 'Unknown Contract' : undefined)}
+              />
+              <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">
+                {transaction.isToContract ? (
+                  <>
+                    <FileText className="h-3 w-3" />
+                    <span>📄 Contract</span>
+                  </>
+                ) : (
+                  <>
+                    <User className="h-3 w-3" />
+                    <span>👤 EOA</span>
+                  </>
+                )}
+              </div>
+            </div>
+            
+            {transaction.isToContract && transaction.contractName && (
+              <div className="mt-2 text-sm text-muted-foreground">
+                Contract Name: <span className="font-medium text-foreground">{transaction.contractName}</span>
+              </div>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* Addresses */}
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-muted-foreground">From Address</label>
-            <AddressDisplay 
-              address={transaction.from} 
-              label={transaction.fromLabel}
-              truncate={false}
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-muted-foreground">To Address</label>
-            <AddressDisplay 
-              address={transaction.to} 
-              label={transaction.toLabel}
-              truncate={false}
-            />
-          </div>
-        </div>
-
-        {/* Amount */}
-        <div className="text-center py-4 glass-card rounded-lg">
-          <div className="text-3xl font-bold gradient-text">
-            {transaction.amount.toLocaleString()} USDT
-          </div>
-          <div className="text-muted-foreground">
-            ${transaction.amountUsd.toLocaleString()} USD
-          </div>
-        </div>
-
-        {/* Timestamp */}
+      {/* Transaction Details */}
+      <div className="grid grid-cols-2 gap-4 text-sm border-t pt-4">
         <div>
-          <label className="text-sm font-medium text-muted-foreground">Timestamp</label>
-          <p className="flex items-center gap-2 text-sm">
-            <Clock className="h-4 w-4" />
-            {format(transaction.timestamp, 'PPpp')}
-            <span className="text-muted-foreground">
+          <label className="text-muted-foreground">Amount</label>
+          <p className="font-semibold">{transaction.amount.toLocaleString()} USDT</p>
+        </div>
+        <div>
+          <label className="text-muted-foreground">USD Value</label>
+          <p className="font-semibold">${transaction.amountUsd.toLocaleString()}</p>
+        </div>
+        <div>
+          <label className="text-muted-foreground">Block</label>
+          <p className="font-semibold">#{transaction.blockNumber.toLocaleString()}</p>
+        </div>
+        <div>
+          <label className="text-muted-foreground">Gas Fee</label>
+          <p className="font-semibold">${transaction.gasFeeUsd.toFixed(2)}</p>
+        </div>
+        <div className="col-span-2">
+          <label className="text-muted-foreground">Timestamp</label>
+          <p className="font-semibold">
+            {format(transaction.timestamp, 'PPpp')} 
+            <span className="text-muted-foreground ml-2">
               ({formatDistanceToNow(transaction.timestamp, { addSuffix: true })})
             </span>
           </p>
         </div>
+      </div>
 
-        {/* Analysis Button */}
-        <Button
-          onClick={handleAnalyze}
-          disabled={isAnalyzing}
-          className="w-full gradient-primary animate-pulse-glow disabled:animate-none"
-          size="lg"
-        >
-          {isAnalyzing ? (
-            <>
-              <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-              Analyzing Transaction...
-            </>
-          ) : (
-            <>
-              <Shield className="h-5 w-5 mr-2" />
-              Analyze Transaction
-            </>
-          )}
-        </Button>
+      {/* Contract Analysis Section */}
+      <div className="border-t pt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="font-semibold">Contract Security Analysis</h4>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Button
+                    onClick={handleAnalyzeContract}
+                    disabled={!transaction.isToContract || contractAnalysis.isAnalyzing}
+                    size="sm"
+                    variant={transaction.riskLevel === 'not-analyzed' ? 'default' : 'outline'}
+                  >
+                    {contractAnalysis.isAnalyzing ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Shield className="h-4 w-4 mr-2" />
+                    )}
+                    Analyze Contract Security
+                  </Button>
+                </div>
+              </TooltipTrigger>
+              {!transaction.isToContract && (
+                <TooltipContent>
+                  <p>Only contracts can be analyzed</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
+        </div>
 
-        {/* Analysis Results */}
-        <AnimatePresence>
-          {analysis && (
+        <AnimatePresence mode="wait">
+          {contractAnalysis.isAnalyzing && (
             <motion.div
-              className="space-y-4 pt-4 border-t border-border"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.4 }}
+              key="analyzing"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-4"
             >
-              <h4 className="font-semibold text-primary">Analysis Results</h4>
-              
-              {/* Risk Score */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Risk Score</span>
-                  <span className={`text-sm font-bold ${
-                    analysis.riskScore >= 70 ? 'text-red-400' :
-                    analysis.riskScore >= 40 ? 'text-yellow-400' : 'text-green-400'
-                  }`}>
-                    {analysis.riskScore}/100
-                  </span>
-                </div>
-                <Progress 
-                  value={analysis.riskScore} 
-                  className={`h-2 ${
-                    analysis.riskScore >= 70 ? '[&>div]:bg-red-500' :
-                    analysis.riskScore >= 40 ? '[&>div]:bg-yellow-500' : '[&>div]:bg-green-500'
-                  }`}
-                />
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {contractAnalysis.progress || 'Analyzing contract security...'}
               </div>
+              <Progress value={75} className="w-full" />
+            </motion.div>
+          )}
 
-              {/* Confidence */}
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">Confidence</span>
-                <span className="text-sm font-bold text-primary">{analysis.confidence}%</span>
+          {contractAnalysis.error && (
+            <motion.div
+              key="error"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="p-4 rounded-lg bg-red-500/10 border border-red-500/20"
+            >
+              <div className="flex items-center gap-2 text-red-400">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-sm font-medium">Analysis Failed</span>
               </div>
+              <p className="text-sm text-red-300 mt-1">{contractAnalysis.error}</p>
+            </motion.div>
+          )}
 
-              {/* Risk Factors */}
-              <div className="space-y-2">
-                <span className="text-sm font-medium">Risk Factors</span>
-                <div className="space-y-1">
-                  {analysis.riskFactors.map((factor, index) => (
-                    <div key={index} className="flex items-center gap-2 text-sm">
-                      {analysis.riskScore >= 70 ? (
-                        <AlertTriangle className="h-4 w-4 text-red-400 flex-shrink-0" />
-                      ) : (
-                        <Shield className="h-4 w-4 text-green-400 flex-shrink-0" />
-                      )}
-                      <span className="text-muted-foreground">{factor}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {!contractAnalysis.isAnalyzing && contractAnalysis.analysis && (
+            <motion.div
+              key="analysis-result"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              <ContractAnalysisResult analysis={contractAnalysis.analysis} />
+            </motion.div>
+          )}
 
-              {/* Recommendation */}
-              <div className={`p-3 rounded-lg border ${
-                analysis.riskScore >= 70 ? 'bg-red-500/10 border-red-500/20' :
-                analysis.riskScore >= 40 ? 'bg-yellow-500/10 border-yellow-500/20' : 
-                'bg-green-500/10 border-green-500/20'
-              }`}>
-                <div className="flex items-center gap-2 mb-1">
-                  {analysis.riskScore >= 70 ? (
-                    <AlertTriangle className="h-4 w-4 text-red-400" />
-                  ) : (
-                    <Shield className="h-4 w-4 text-green-400" />
-                  )}
-                  <span className="font-medium text-sm">Recommendation</span>
-                </div>
-                <p className="text-sm text-muted-foreground">{analysis.recommendation}</p>
-              </div>
+          {!contractAnalysis.isAnalyzing && !contractAnalysis.analysis && !contractAnalysis.error && transaction.isToContract && (
+            <motion.div
+              key="not-analyzed"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-center py-8 text-muted-foreground"
+            >
+              <Shield className="h-8 w-8 mx-auto mb-3 opacity-50" />
+              <p className="text-sm">This contract has not been analyzed yet.</p>
+              <p className="text-xs mt-1">Click "Analyze Contract Security" to perform security analysis.</p>
+            </motion.div>
+          )}
+
+          {!transaction.isToContract && (
+            <motion.div
+              key="not-contract"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-center py-8 text-muted-foreground"
+            >
+              <User className="h-8 w-8 mx-auto mb-3 opacity-50" />
+              <p className="text-sm">This transaction is to a regular wallet (EOA).</p>
+              <p className="text-xs mt-1">Only smart contracts can be analyzed for security vulnerabilities.</p>
             </motion.div>
           )}
         </AnimatePresence>

@@ -55,7 +55,7 @@ export function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
             })}
             min={0}
             max={1000000}
-            step={1000}
+            step={1}
             className="w-full"
           />
         </div>
