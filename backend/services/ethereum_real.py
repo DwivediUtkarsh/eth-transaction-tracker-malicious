@@ -6,6 +6,11 @@ from web3 import Web3
 # from web3.middleware import geth_poa_middleware  # Not needed for mainnet
 import json
 import os
+from dotenv import load_dotenv
+from .price_service import price_service
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +98,7 @@ class RealEthereumService:
         return False
     
     async def format_transaction(self, tx, block) -> Optional[Dict]:
-        """Format transaction data for our application."""
+        """Format transaction data for our application with proper USD calculations."""
         try:
             # Get transaction receipt for more details
             receipt = self.w3.eth.get_transaction_receipt(tx.hash)
@@ -104,29 +109,42 @@ class RealEthereumService:
             gas_fee_wei = gas_used * gas_price
             gas_fee_eth = self.w3.from_wei(gas_fee_wei, 'ether')
             
-            # Estimate USD values (you might want to use a price API)
-            eth_price_usd = 2100.0  # You should fetch this from an API
+            # Get real-time ETH price
+            eth_price_usd = await price_service.get_eth_price_usd()
             
             # Check if addresses are contracts
             is_to_contract = await self.is_contract_address(tx.to) if tx.to else False
             is_from_contract = await self.is_contract_address(tx['from'])
             
-            # Determine transaction value
+            # Determine transaction value and type
+            value_usd = 0.0
+            value_eth = 0.0
+            
             if tx.value > 0:
-                # ETH transaction
+                # ETH transaction - show ETH amount and USD equivalent
                 value_eth = float(self.w3.from_wei(tx.value, 'ether'))
                 value_usd = value_eth * eth_price_usd
+                logger.debug(f"ETH tx: {value_eth} ETH = ${value_usd:.2f}")
             else:
-                # Contract interaction - try to decode USDT transfer
-                value_usd = await self.decode_token_transfer(tx, receipt)
-                value_eth = value_usd / eth_price_usd if value_usd > 0 else 0
+                # Contract interaction - try to decode token transfer
+                token_transfer = await self.decode_token_transfer(tx, receipt)
+                if token_transfer:
+                    # For stablecoins (USDT/USDC/DAI), the token amount IS the USD value
+                    value_usd = token_transfer["amount"]
+                    # Calculate ETH equivalent for reference
+                    value_eth = value_usd / eth_price_usd if eth_price_usd > 0 else 0
+                    logger.debug(f"Token tx: {token_transfer['symbol']} {value_usd} ≈ {value_eth:.6f} ETH")
+                else:
+                    # Contract interaction with no token transfer
+                    value_usd = 0.0
+                    value_eth = 0.0
             
             return {
                 "hash": tx.hash.hex(),
                 "from_address": tx['from'],
                 "to_address": tx.to or "0x0000000000000000000000000000000000000000",
-                "value": value_usd,
-                "eth_value": value_eth,
+                "value": value_usd,  # USD value (either ETH->USD or token amount)
+                "eth_value": value_eth,  # ETH equivalent
                 "block_number": block.number,
                 "timestamp": datetime.fromtimestamp(block.timestamp),
                 "is_contract": is_to_contract,
@@ -151,31 +169,47 @@ class RealEthereumService:
             logger.error(f"Error checking contract status for {address}: {e}")
             return False
     
-    async def decode_token_transfer(self, tx, receipt) -> float:
-        """Decode token transfer amount from transaction logs."""
+    async def decode_token_transfer(self, tx, receipt) -> Optional[Dict]:
+        """Decode token transfer amount and details from transaction logs."""
         try:
             # ERC-20 Transfer event signature
             transfer_signature = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
             
+            # Known token contracts with their details
+            known_tokens = {
+                "0xdac17f958d2ee523a2206206994597c13d831ec7": {"symbol": "USDT", "decimals": 6},
+                "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": {"symbol": "USDC", "decimals": 6},
+                "0x6b175474e89094c44da98b954eedeac495271d0f": {"symbol": "DAI", "decimals": 18},
+            }
+            
             for log in receipt.logs:
                 if len(log.topics) > 0 and log.topics[0].hex() == transfer_signature:
-                    # Decode transfer amount (assuming 6 decimals for USDT)
+                    contract_address = log.address.lower()
+                    
+                    # Check if this is a known token
+                    token_info = known_tokens.get(contract_address)
+                    if not token_info:
+                        continue  # Skip unknown tokens
+                    
+                    # Decode transfer amount
                     if len(log.data) >= 66:  # 0x + 64 hex chars
                         amount_hex = log.data[-64:]
                         amount_wei = int(amount_hex, 16)
                         
-                        # USDT has 6 decimals, USDC has 6, DAI has 18
-                        decimals = 6  # Default for USDT/USDC
-                        if log.address.lower() == "0x6b175474e89094c44da98b954eedeac495271d0f":
-                            decimals = 18  # DAI
-                        
+                        decimals = token_info["decimals"]
                         amount = amount_wei / (10 ** decimals)
-                        return float(amount)
+                        
+                        return {
+                            "amount": float(amount),
+                            "symbol": token_info["symbol"],
+                            "contract": contract_address,
+                            "decimals": decimals
+                        }
             
-            return 0.0
+            return None
         except Exception as e:
             logger.error(f"Error decoding token transfer: {e}")
-            return 0.0
+            return None
     
     async def get_recent_transactions(self, count: int = 20) -> List[Dict]:
         """Get recent transactions from the latest blocks."""
