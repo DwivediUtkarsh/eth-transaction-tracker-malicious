@@ -1,0 +1,180 @@
+import { Transaction } from "@/types/transaction";
+
+export const mockTransactions: Transaction[] = [
+  {
+    id: "1",
+    hash: "0x1a2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890",
+    from: "0x742c82f6d68b4c68ae69c1c4d9b6a8b2c8f6d68b",
+    to: "0xa1b2c3d4e5f67890abcdef1234567890abcdef12",
+    amount: 50000,
+    amountUsd: 50000,
+    timestamp: new Date(Date.now() - 2 * 60 * 1000), // 2 mins ago
+    blockNumber: 18500123,
+    gasPrice: "25.6",
+    gasFee: "0.00512",
+    gasFeeUsd: 12.8,
+    status: 'new',
+    riskLevel: 'suspicious',
+    fromLabel: "Binance Hot Wallet",
+    riskScore: 75,
+    confidence: 85,
+    riskFactors: ["High amount transfer", "Multiple recent transactions"]
+  },
+  {
+    id: "2",
+    hash: "0x2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+    from: "0x83c82f6d68b4c68ae69c1c4d9b6a8b2c8f6d68b4",
+    to: "0xb2c3d4e5f67890abcdef1234567890abcdef1234",
+    amount: 1500,
+    amountUsd: 1500,
+    timestamp: new Date(Date.now() - 5 * 60 * 1000), // 5 mins ago
+    blockNumber: 18500121,
+    gasPrice: "22.1",
+    gasFee: "0.00442",
+    gasFeeUsd: 11.05,
+    status: 'new',
+    riskLevel: 'safe',
+    riskScore: 15,
+    confidence: 92,
+    riskFactors: []
+  },
+  {
+    id: "3",
+    hash: "0x3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    from: "0x94d93f7e79c5d79cf70d2e5ea7fb9e7ca9fb9e7c",
+    to: "0xc3d4e5f67890abcdef1234567890abcdef123456",
+    amount: 250000,
+    amountUsd: 250000,
+    timestamp: new Date(Date.now() - 8 * 60 * 1000), // 8 mins ago
+    blockNumber: 18500119,
+    gasPrice: "28.3",
+    gasFee: "0.00566",
+    gasFeeUsd: 14.15,
+    status: 'new',
+    riskLevel: 'malicious',
+    toLabel: "Known Scam Address",
+    riskScore: 95,
+    confidence: 98,
+    riskFactors: ["Blacklisted address", "High amount", "Suspicious pattern"]
+  },
+  {
+    id: "4",
+    hash: "0x4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    from: "0xa5e4f8g9h0i1j2k3l4m5n6o7p8q9r0s1t2u3v4w5",
+    to: "0xd4e5f67890abcdef1234567890abcdef12345678",
+    amount: 100,
+    amountUsd: 100,
+    timestamp: new Date(Date.now() - 12 * 60 * 1000), // 12 mins ago
+    blockNumber: 18500115,
+    gasPrice: "20.5",
+    gasFee: "0.00410",
+    gasFeeUsd: 10.25,
+    status: 'old',
+    riskLevel: 'not-analyzed'
+  },
+  {
+    id: "5",
+    hash: "0x5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12",
+    from: "0xb6f5g9h1i2j3k4l5m6n7o8p9q0r1s2t3u4v5w6x7",
+    to: "0xe5f67890abcdef1234567890abcdef1234567890",
+    amount: 75000,
+    amountUsd: 75000,
+    timestamp: new Date(Date.now() - 15 * 60 * 1000), // 15 mins ago
+    blockNumber: 18500112,
+    gasPrice: "24.8",
+    gasFee: "0.00496",
+    gasFeeUsd: 12.4,
+    status: 'old',
+    riskLevel: 'suspicious',
+    riskScore: 65,
+    confidence: 78,
+    riskFactors: ["Large amount", "Off-hours transaction"]
+  },
+  {
+    id: "6",
+    hash: "0x6f7890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234",
+    from: "0xc7g6h2i3j4k5l6m7n8o9p0q1r2s3t4u5v6w7x8y9",
+    to: "0xf67890abcdef1234567890abcdef12345678901a",
+    amount: 500,
+    amountUsd: 500,
+    timestamp: new Date(Date.now() - 18 * 60 * 1000), // 18 mins ago
+    blockNumber: 18500109,
+    gasPrice: "21.2",
+    gasFee: "0.00424",
+    gasFeeUsd: 10.6,
+    status: 'old',
+    riskLevel: 'safe',
+    riskScore: 10,
+    confidence: 95,
+    riskFactors: []
+  },
+  {
+    id: "7",
+    hash: "0x7890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123456",
+    from: "0xd8h7i3j4k5l6m7n8o9p0q1r2s3t4u5v6w7x8y9z0",
+    to: "0x67890abcdef1234567890abcdef123456789012b",
+    amount: 15000,
+    amountUsd: 15000,
+    timestamp: new Date(Date.now() - 22 * 60 * 1000), // 22 mins ago
+    blockNumber: 18500105,
+    gasPrice: "23.7",
+    gasFee: "0.00474",
+    gasFeeUsd: 11.85,
+    status: 'old',
+    riskLevel: 'suspicious',
+    riskScore: 55,
+    confidence: 72,
+    riskFactors: ["Repeated pattern", "Medium amount"]
+  },
+  {
+    id: "8",
+    hash: "0x890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567",
+    from: "0xe9i8j4k5l6m7n8o9p0q1r2s3t4u5v6w7x8y9z0a1",
+    to: "0x7890abcdef1234567890abcdef123456789012c",
+    amount: 2500,
+    amountUsd: 2500,
+    timestamp: new Date(Date.now() - 25 * 60 * 1000), // 25 mins ago
+    blockNumber: 18500102,
+    gasPrice: "19.8",
+    gasFee: "0.00396",
+    gasFeeUsd: 9.9,
+    status: 'old',
+    riskLevel: 'safe',
+    riskScore: 20,
+    confidence: 88,
+    riskFactors: []
+  },
+  {
+    id: "9",
+    hash: "0x90abcdef1234567890abcdef1234567890abcdef1234567890abcdef12345678",
+    from: "0xf0j9k5l6m7n8o9p0q1r2s3t4u5v6w7x8y9z0a1b2",
+    to: "0x890abcdef1234567890abcdef123456789012d",
+    amount: 120000,
+    amountUsd: 120000,
+    timestamp: new Date(Date.now() - 28 * 60 * 1000), // 28 mins ago
+    blockNumber: 18500098,
+    gasPrice: "26.4",
+    gasFee: "0.00528",
+    gasFeeUsd: 13.2,
+    status: 'old',
+    riskLevel: 'malicious',
+    riskScore: 88,
+    confidence: 91,
+    riskFactors: ["Very high amount", "Suspicious timing", "Pattern match"]
+  },
+  {
+    id: "10",
+    hash: "0x0abcdef1234567890abcdef1234567890abcdef1234567890abcdef123456789",
+    from: "0x01k0l6m7n8o9p0q1r2s3t4u5v6w7x8y9z0a1b2c3",
+    to: "0x90abcdef1234567890abcdef123456789012e",
+    amount: 800,
+    amountUsd: 800,
+    timestamp: new Date(Date.now() - 32 * 60 * 1000), // 32 mins ago
+    blockNumber: 18500095,
+    gasPrice: "18.9",
+    gasFee: "0.00378",
+    gasFeeUsd: 9.45,
+    status: 'old',
+    riskLevel: 'not-analyzed'
+  }
+];
