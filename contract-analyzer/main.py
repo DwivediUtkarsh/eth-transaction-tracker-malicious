@@ -7,10 +7,14 @@ import google.generativeai as genai
 import json
 import uuid
 import asyncio
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime
 import logging
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,12 +39,20 @@ class AnalysisResult(BaseModel):
     contract_address: Optional[str] = None
     verdict: Optional[str] = None
     explanation: Optional[str] = None
+    security_score: Optional[int] = None
+    attack_vectors: Optional[List[str]] = None
     error: Optional[str] = None
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
 # Configure Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+print(f"🔑 GEMINI_API_KEY loaded: {'✅' if GEMINI_API_KEY else '❌'}")
+if GEMINI_API_KEY:
+    print(f"🔑 API Key length: {len(GEMINI_API_KEY)}")
+    print(f"🔑 API Key starts with: {GEMINI_API_KEY[:10]}")
+else:
+    print("🔑 API Key is None or empty!")
 genai.configure(api_key=GEMINI_API_KEY)
 
 SECURITY_PROMPT = """
@@ -100,21 +112,71 @@ def analyze_contract(contract_source: str) -> dict:
         response = model.generate_content(prompt)
         raw_output = response.text.strip()
         
+        logger.info(f"🤖 Gemini raw response: {raw_output[:200]}...")
+        
         # Try parsing JSON
         try:
             result = json.loads(raw_output)
+            logger.info(f"✅ Successfully parsed JSON result: {result.get('verdict', 'Unknown')}")
         except json.JSONDecodeError:
+            logger.warning("⚠️ JSON parsing failed, trying fallback extraction...")
             # Fallback: extract JSON substring
             start, end = raw_output.find("{"), raw_output.rfind("}") + 1
             if start != -1 and end != -1:
-                result = json.loads(raw_output[start:end])
+                try:
+                    result = json.loads(raw_output[start:end])
+                    logger.info(f"✅ Fallback JSON parsing succeeded: {result.get('verdict', 'Unknown')}")
+                except json.JSONDecodeError:
+                    logger.error("❌ Fallback JSON parsing also failed")
+                    result = {"verdict": "UNKNOWN", "explanation": raw_output[:500]}
             else:
-                result = {"verdict": "UNKNOWN", "explanation": raw_output}
+                logger.error("❌ No JSON structure found in response")
+                result = {"verdict": "UNKNOWN", "explanation": raw_output[:500]}
         
+        # Ensure all required fields are present
+        result = ensure_complete_analysis(result, raw_output)
+        
+        logger.info(f"🔍 Final analysis result: verdict={result.get('verdict')}, score={result.get('security_score')}")
         return result
     except Exception as e:
         logger.error(f"Error analyzing contract: {str(e)}")
         raise Exception(f"Failed to analyze contract: {str(e)}")
+
+def ensure_complete_analysis(result: dict, raw_output: str) -> dict:
+    """Ensure the analysis result has all required fields with sensible defaults."""
+    
+    # Ensure verdict is valid
+    valid_verdicts = ["MALICIOUS", "SUSPICIOUS", "BENIGN"]
+    if not result.get("verdict") or result.get("verdict") not in valid_verdicts:
+        result["verdict"] = "UNKNOWN"
+    
+    # Ensure explanation exists
+    if not result.get("explanation"):
+        result["explanation"] = "Analysis completed but no detailed explanation provided."
+    
+    # Ensure security_score exists and is valid
+    security_score = result.get("security_score")
+    if security_score is None or not isinstance(security_score, (int, float)):
+        # Generate security score based on verdict
+        if result.get("verdict") == "BENIGN":
+            result["security_score"] = 85  # High security score for benign
+        elif result.get("verdict") == "SUSPICIOUS":
+            result["security_score"] = 45  # Medium security score for suspicious
+        elif result.get("verdict") == "MALICIOUS":
+            result["security_score"] = 15  # Low security score for malicious
+        else:
+            result["security_score"] = 50  # Default for unknown
+        
+        logger.warning(f"⚠️ Security score was missing/invalid, generated score: {result['security_score']} based on verdict: {result.get('verdict')}")
+    else:
+        # Ensure score is within valid range (0-100)
+        result["security_score"] = max(0, min(100, int(security_score)))
+    
+    # Ensure attack_vectors exists
+    if not result.get("attack_vectors") or not isinstance(result.get("attack_vectors"), list):
+        result["attack_vectors"] = []
+    
+    return result
 
 async def process_contract_analysis(task_id: str, contract_address: str):
     """Background task to process contract analysis"""
@@ -141,15 +203,38 @@ async def process_contract_analysis(task_id: str, contract_address: str):
         # Analyze contract with Gemini
         verdict = analyze_contract(decompiled_code)
         
-        # Update results
+        # Update results with debug logging
+        logger.info(f"🔍 Raw verdict from Gemini: {verdict}")
+        
+        # Force security score generation if missing
+        if not verdict.get("security_score"):
+            logger.warning(f"⚠️ Security score missing from Gemini response, generating based on verdict: {verdict.get('verdict')}")
+            
+            verdict_to_score = {
+                "BENIGN": 85,
+                "SUSPICIOUS": 45, 
+                "MALICIOUS": 15
+            }
+            verdict["security_score"] = verdict_to_score.get(verdict.get("verdict", "UNKNOWN"), 50)
+            
+        security_score = verdict.get("security_score", 50)
+        logger.info(f"🔍 Storing analysis results for {task_id}:")
+        logger.info(f"  - Verdict: {verdict.get('verdict', 'UNKNOWN')}")
+        logger.info(f"  - Security Score: {security_score}")
+        logger.info(f"  - Attack Vectors: {verdict.get('attack_vectors', [])}")
+        
         analysis_results[task_id].update({
             "status": "completed",
             "verdict": verdict.get("verdict", "UNKNOWN"),
             "explanation": verdict.get("explanation", "No explanation provided"),
-            "security_score": verdict.get("security_score", 50),
+            "security_score": security_score,
             "attack_vectors": verdict.get("attack_vectors", []),
             "completed_at": datetime.utcnow()
         })
+        
+        # Verify what was actually stored
+        stored_result = analysis_results[task_id]
+        logger.info(f"✅ Verification - stored security_score: {stored_result.get('security_score')}")
         
         logger.info(f"Analysis completed for task {task_id}: {verdict.get('verdict')}")
         
@@ -210,7 +295,7 @@ async def get_analysis_status(task_id: str):
 
 @app.get("/results/{task_id}")
 async def get_analysis_results(task_id: str):
-    """Get the final analysis results in the original JSON format"""
+    """Get the final analysis results with all fields including security score"""
     
     if task_id not in analysis_results:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -219,8 +304,10 @@ async def get_analysis_results(task_id: str):
     
     if result["status"] == "completed":
         return {
-            "verdict": result["verdict"],
-            "explanation": result["explanation"]
+            "verdict": result.get("verdict"),
+            "explanation": result.get("explanation"),
+            "security_score": result.get("security_score"),
+            "attack_vectors": result.get("attack_vectors", [])
         }
     elif result["status"] == "failed":
         raise HTTPException(
@@ -232,6 +319,34 @@ async def get_analysis_results(task_id: str):
             status_code=202, 
             detail=f"Analysis is still {result['status']}. Please check back later."
         )
+
+@app.get("/debug/all")
+async def debug_all_tasks():
+    """Debug endpoint to see all stored tasks"""
+    return {
+        "total_tasks": len(analysis_results),
+        "task_ids": list(analysis_results.keys()),
+        "first_task_sample": next(iter(analysis_results.values())) if analysis_results else None
+    }
+
+@app.get("/debug/{task_id}")
+async def debug_analysis_data(task_id: str):
+    """Debug endpoint to see exact stored data"""
+    
+    if task_id not in analysis_results:
+        return {
+            "error": "Task not found",
+            "total_tasks": len(analysis_results),
+            "available_tasks": list(analysis_results.keys())[:5]
+        }
+    
+    result = analysis_results[task_id]
+    return {
+        "raw_stored_data": result,
+        "security_score_type": type(result.get("security_score")).__name__,
+        "security_score_value": result.get("security_score"),
+        "all_keys": list(result.keys())
+    }
 
 @app.delete("/cleanup")
 async def cleanup_old_results():

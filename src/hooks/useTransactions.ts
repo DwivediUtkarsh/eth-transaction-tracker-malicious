@@ -140,59 +140,99 @@ export function useWebSocket() {
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimer: NodeJS.Timeout | null = null;
+    let isComponentMounted = true;
+    let reconnectAttempts = 0;
 
     const connect = () => {
+      // Don't connect if component is unmounted
+      if (!isComponentMounted) return;
+      
       try {
+        // Close existing connection if any
+        if (ws) {
+          ws.close();
+        }
+
         ws = new WebSocket('ws://localhost:8000/ws');
         
         ws.onopen = () => {
-          console.log('WebSocket connected');
+          if (!isComponentMounted) return;
+          console.log('🔌 WebSocket connected');
           setIsConnected(true);
+          reconnectAttempts = 0; // Reset on successful connection
         };
         
         ws.onmessage = (event) => {
+          if (!isComponentMounted) return;
           try {
             const message = JSON.parse(event.data);
-            console.log('WebSocket message received:', message);
+            console.log('📨 WebSocket message:', message);
             setLastMessage(message);
           } catch (err) {
             console.error('Failed to parse WebSocket message:', err);
           }
         };
         
-        ws.onclose = () => {
-          console.log('WebSocket disconnected');
+        ws.onclose = (event) => {
+          if (!isComponentMounted) return;
+          
+          console.log('🔌 WebSocket disconnected');
           setIsConnected(false);
           
-          // Attempt to reconnect after 5 seconds
-          reconnectTimer = setTimeout(() => {
-            console.log('Attempting to reconnect WebSocket...');
-            connect();
-          }, 5000);
+          // Only reconnect if it wasn't deliberate and we haven't exceeded max attempts
+          if (event.code !== 1000 && reconnectAttempts < 5) {
+            const delay = Math.min(5000 * Math.pow(2, reconnectAttempts), 30000); // Exponential backoff
+            console.log(`⏰ Reconnecting in ${delay/1000}s (attempt ${reconnectAttempts + 1}/5)`);
+            
+            reconnectTimer = setTimeout(() => {
+              if (isComponentMounted) {
+                reconnectAttempts++;
+                connect();
+              }
+            }, delay);
+          }
         };
         
         ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
+          if (!isComponentMounted) return;
+          console.error('🚨 WebSocket error:', error);
           setIsConnected(false);
         };
         
       } catch (err) {
+        if (!isComponentMounted) return;
         console.error('Failed to create WebSocket connection:', err);
         setIsConnected(false);
         
-        // Retry connection after 5 seconds
-        reconnectTimer = setTimeout(connect, 5000);
+        // Retry with backoff
+        if (reconnectAttempts < 5) {
+          const delay = Math.min(5000 * Math.pow(2, reconnectAttempts), 30000);
+          reconnectTimer = setTimeout(() => {
+            if (isComponentMounted) {
+              reconnectAttempts++;
+              connect();
+            }
+          }, delay);
+        }
       }
     };
 
+    // Initial connection
     connect();
 
+    // Cleanup on unmount
     return () => {
+      isComponentMounted = false;
+      
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
+        reconnectTimer = null;
       }
+      
       if (ws) {
-        ws.close();
+        ws.onclose = null; // Prevent reconnection attempts
+        ws.close(1000, 'Component unmounting');
+        ws = null;
       }
     };
   }, []);

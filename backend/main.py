@@ -272,27 +272,43 @@ async def analyze_contract_endpoint(
 ):
     """Submit a contract for security analysis."""
     
-    if not ethereum_service.validate_address(request.contract_address):
-        raise HTTPException(status_code=400, detail="Invalid contract address format")
+    # Note: Basic address format validation is already handled by Pydantic schema
     
-    # Check if address is actually a contract
+    # Check if address is actually a contract (with a more permissive approach)
     if not ethereum_service.is_contract_address(request.contract_address):
-        raise HTTPException(status_code=400, detail="Address is not a contract")
+        logger.warning(f"Address {request.contract_address} not detected as contract by validation, but proceeding with analysis")
+        # Instead of blocking, we'll just log a warning and proceed
+        # The contract analyzer service will determine if it can actually analyze this address
     
-    # Check for existing recent analysis
+    # Check for existing recent analysis (but only if it was successful)
     recent_analysis = db.query(ContractAnalysis).filter(
+        and_(
+            ContractAnalysis.contract_address == request.contract_address.lower(),
+            ContractAnalysis.analyzed_at > datetime.utcnow() - timedelta(hours=24),
+            ContractAnalysis.status == "completed",
+            ContractAnalysis.verdict.isnot(None),  # Only return if analysis has real results
+            ContractAnalysis.explanation.isnot(None)
+        )
+    ).first()
+    
+    if recent_analysis:
+        logger.info(f"Found recent successful analysis for {request.contract_address}: {recent_analysis.verdict}")
+        return {
+            "task_id": recent_analysis.task_id,
+            "status": "completed",
+            "message": "Recent analysis found"
+        }
+    
+    # If we found a recent analysis but it was incomplete/failed, log it but continue with new analysis
+    old_analysis = db.query(ContractAnalysis).filter(
         and_(
             ContractAnalysis.contract_address == request.contract_address.lower(),
             ContractAnalysis.analyzed_at > datetime.utcnow() - timedelta(hours=24)
         )
     ).first()
     
-    if recent_analysis and recent_analysis.status == "completed":
-        return {
-            "task_id": recent_analysis.task_id,
-            "status": "completed",
-            "message": "Recent analysis found"
-        }
+    if old_analysis:
+        logger.info(f"Found recent incomplete analysis for {request.contract_address}, running fresh analysis")
     
     try:
         # Submit to analyzer service
@@ -467,8 +483,10 @@ async def poll_analysis_result(task_id: str, db: Session):
     while attempt < max_attempts:
         try:
             result = await contract_analyzer.get_analysis_result(task_id)
+            logger.info(f"📊 Polling result for {task_id}: {result}")
             
-            if result.get("status") == "completed":
+            # Check if result has actual analysis data (not just status)
+            if result.get("verdict") and result.get("explanation"):
                 # Update database with results
                 analysis = db.query(ContractAnalysis).filter(
                     ContractAnalysis.task_id == task_id

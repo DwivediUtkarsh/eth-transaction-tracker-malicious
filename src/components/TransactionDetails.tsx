@@ -32,12 +32,19 @@ export function TransactionDetails({ transaction }: TransactionDetailsProps) {
   const handleAnalyzeContract = async () => {
     if (!transaction || !transaction.isToContract) return;
     
+    console.log(`🔍 Starting contract analysis for: ${transaction.to}`);
+    
     try {
       await contractAnalysis.analyze();
-      toast.success('Contract analysis completed!');
+      
+      // Success will be shown by the UI state change, no need for toast
+      console.log('✅ Contract analysis completed successfully!');
+      
     } catch (error) {
-      console.error('Contract analysis failed:', error);
-      toast.error('Contract analysis failed. Please try again.');
+      console.error('❌ Contract analysis failed:', error);
+      // Only show error toast for actual failures
+      const errorMessage = error instanceof Error ? error.message : 'Analysis failed';
+      toast.error(`Analysis failed: ${errorMessage}`);
     }
   };
 
@@ -96,7 +103,7 @@ export function TransactionDetails({ transaction }: TransactionDetailsProps) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => window.open(`https://etherscan.io/tx/${transaction.hash}`, '_blank')}
+            onClick={() => window.open(`https://etherscan.io/tx/${transaction.hash.startsWith('0x') ? transaction.hash : '0x' + transaction.hash}`, '_blank')}
           >
             <ExternalLink className="h-4 w-4" />
           </Button>
@@ -230,7 +237,12 @@ export function TransactionDetails({ transaction }: TransactionDetailsProps) {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 {contractAnalysis.progress || 'Analyzing contract security...'}
               </div>
-              <Progress value={75} className="w-full" />
+              <Progress 
+                value={contractAnalysis.progress?.includes('%') 
+                  ? parseInt(contractAnalysis.progress.match(/\d+/)?.[0] || '50')
+                  : Math.min(85, 20 + (contractAnalysis.progress?.length || 0) * 2)} 
+                className="w-full" 
+              />
             </motion.div>
           )}
 

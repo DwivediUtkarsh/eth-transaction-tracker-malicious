@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from parent directory (since backend runs from backend/ subdirectory)
+load_dotenv('../.env')
 
 # API Settings
 API_HOST = "0.0.0.0"

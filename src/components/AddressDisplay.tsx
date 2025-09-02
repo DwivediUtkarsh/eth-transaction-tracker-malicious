@@ -36,7 +36,8 @@ export function AddressDisplay({ address, label, truncate = true, className }: A
   };
 
   const openEtherscan = () => {
-    window.open(`https://etherscan.io/address/${address}`, '_blank');
+    const formattedAddress = address.startsWith('0x') ? address : '0x' + address;
+    window.open(`https://etherscan.io/address/${formattedAddress}`, '_blank');
   };
 
   return (

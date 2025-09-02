@@ -9,8 +9,8 @@ import os
 from dotenv import load_dotenv
 from .price_service import price_service
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from parent directory
+load_dotenv('../../.env')
 
 logger = logging.getLogger(__name__)
 
